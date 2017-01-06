@@ -1,0 +1,73 @@
+#!/bin/sh
+
+set -e
+
+LATEST_VERSION="1.12.5"
+LATEST_SHASUM="71ca7dd4ddbdc8367a2c5e18913404b92b992e13"
+BUILD_DIR_PATH="$PWD/tmp"
+
+if [ ! -d "$BUILD_DIR_PATH" ]; then
+	mkdir "$BUILD_DIR_PATH"
+fi
+
+EXTRACT_DIR_PATH="$BUILD_DIR_PATH/$LATEST_VERSION"
+if [ ! -d "$EXTRACT_DIR_PATH" ]; then
+	mkdir "$EXTRACT_DIR_PATH"
+fi
+
+TGZ_PATH="$EXTRACT_DIR_PATH/docker.tgz"
+if [ ! -f "$TGZ_PATH" ]; then
+	curl "https://get.docker.com/builds/Linux/x86_64/docker-$LATEST_VERSION.tgz" -o "$TGZ_PATH"
+	echo "Downloaded $TGZ_PATH"
+else
+	echo "Skipped downloading $TGZ_PATH"
+fi
+
+DOCKER_CLI_PATH="$EXTRACT_DIR_PATH/docker/docker"
+if [ ! -f "$DOCKER_CLI_PATH" ]; then
+	tar -zxf "$TGZ_PATH" -C "$EXTRACT_DIR_PATH"
+	echo "Extracted to $EXTRACT_DIR_PATH"
+else
+	echo "Skipped exracting to $EXTRACT_DIR_PATH"
+fi
+
+if [ ! -f "$DOCKER_CLI_PATH" ]; then
+	echo 'docker binary not found'
+	exit 1
+fi
+
+DOCKER_CLI_SHASUM="$( shasum $DOCKER_CLI_PATH | awk '{print $1}' )"
+if [ "x$DOCKER_CLI_SHASUM" != "x$LATEST_SHASUM" ]; then
+	echo "docker binary shasum = $DOCKER_CLI_SHASUM, expected: $LATEST_SHASUM"
+	exit 1
+fi
+
+# Clean up to make sending context to docker fast
+cp "$DOCKER_CLI_PATH" "$BUILD_DIR_PATH"
+rm -rf "$EXTRACT_DIR_PATH"
+
+# Build it!
+docker build -t xfrocks/docker-cli -t "xfrocks/docker-cli:$LATEST_VERSION" .
+
+# Clean up everything else
+rm -rf "$BUILD_DIR_PATH"
+
+# Quick test
+VERSION_OUTPUT="$( docker run --rm -v '/var/run/docker.sock:/var/run/docker.sock' \
+	xfrocks/docker-cli version \
+)"
+VERSION_MATCHED="$( echo "$VERSION_OUTPUT" | \
+	grep Version | \
+	grep "$LATEST_VERSION" | \
+	wc -l \
+)"
+if [ "$VERSION_MATCHED" -eq 1 ]; then
+	echo 'Test output looks good!'
+else
+	echo 'Test run yielded incorrect version'
+	echo "$VERSION_OUTPUT"
+	exit 1
+fi
+
+docker push xfrocks/docker-cli \
+	&& docker push "xfrocks/docker-cli:$LATEST_VERSION"
