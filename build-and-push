@@ -54,14 +54,9 @@ rm -rf "$BUILD_DIR_PATH"
 
 # Quick test
 VERSION_OUTPUT="$( docker run --rm -v '/var/run/docker.sock:/var/run/docker.sock' \
-	xfrocks/docker-cli version \
+	xfrocks/docker-cli version --format '{{.Client.Version}}' \
 )"
-VERSION_MATCHED="$( echo "$VERSION_OUTPUT" | \
-	grep Version | \
-	grep "$LATEST_VERSION" | \
-	wc -l \
-)"
-if [ "$VERSION_MATCHED" -eq 1 ]; then
+if [ "x$VERSION_OUTPUT" = "x$LATEST_VERSION" ]; then
 	echo 'Test output looks good!'
 else
 	echo 'Test run yielded incorrect version'
